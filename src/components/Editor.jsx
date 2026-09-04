@@ -390,18 +390,21 @@ export default function Editor({ content, onChange, placeholder = 'Start writing
         setToolbar(t => ({ ...t, show: false }))
         return
       }
-      // Position above the selection midpoint
-      const sel = window.getSelection()
-      if (!sel || sel.rangeCount === 0) return
-      const rect = sel.getRangeAt(0).getBoundingClientRect()
-      setToolbar({ show: true, x: rect.left + rect.width / 2, y: rect.top })
+      try {
+        const startCoords = editor.view.coordsAtPos(from)
+        const endCoords = editor.view.coordsAtPos(to)
+        const x = (startCoords.left + endCoords.left) / 2
+        const y = startCoords.top
+        setToolbar({ show: true, x, y })
+      } catch (_) { /* pos out of range */ }
     },
-    onBlur: () => {
-      // Only hide if focus moved outside the toolbar
+    onBlur: ({ event }) => {
+      // Don't hide if focus moved into the toolbar
+      if (toolbarRef.current?.contains(event?.relatedTarget)) return
       setTimeout(() => {
-        if (toolbarRef.current && toolbarRef.current.contains(document.activeElement)) return
+        if (toolbarRef.current?.contains(document.activeElement)) return
         setToolbar(t => ({ ...t, show: false }))
-      }, 100)
+      }, 150)
     },
     editorProps: { attributes: { spellcheck: 'true' } },
   })
@@ -503,10 +506,10 @@ export default function Editor({ content, onChange, placeholder = 'Start writing
 
   if (!editor) return null
 
-  // Clamp toolbar so it doesn't overflow viewport edges
-  const toolbarWidth = 620
+  // Clamp toolbar so it doesn't overflow viewport edges (estimate width until measured)
   const margin = 8
-  const clampedX = Math.max(toolbarWidth / 2 + margin, Math.min(toolbar.x, window.innerWidth - toolbarWidth / 2 - margin))
+  const estHalfW = (toolbarRef.current?.offsetWidth ?? 500) / 2
+  const clampedX = Math.max(estHalfW + margin, Math.min(toolbar.x, window.innerWidth - estHalfW - margin))
 
   return (
     <div className="relative" onMouseDown={e => e.target.closest('.slash-menu') && e.stopPropagation()}>
