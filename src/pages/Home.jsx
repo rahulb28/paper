@@ -60,6 +60,7 @@ export default function Home() {
   const [docs, setDocs] = useState([])
   const [selectedDate, setSelectedDate] = useState(format(new Date(), 'yyyy-MM-dd'))
   const [activeSection, setActiveSection] = useState('docs')
+  const [docError, setDocError] = useState(null)
 
   useEffect(() => {
     if (!user) return
@@ -69,20 +70,30 @@ export default function Home() {
 
   async function handleNewDoc() {
     if (!user) { await signInWithGoogle(); return }
-    const id = await createDoc(user.uid, { title: 'Untitled', type: 'doc' })
-    navigate(`/doc/${id}`)
+    try {
+      setDocError(null)
+      const id = await createDoc(user.uid, { title: 'Untitled', type: 'doc' })
+      navigate(`/doc/${id}`)
+    } catch (err) {
+      setDocError(err.message || 'Failed to create page')
+    }
   }
 
   async function handleDiaryDate(dateStr) {
     if (!user) { await signInWithGoogle(); return }
     setSelectedDate(dateStr)
-    const existing = docs.find(d => d.type === 'diary' && d.date === dateStr)
-    if (existing) {
-      navigate(`/doc/${existing.id}`)
-    } else {
-      const title = format(parseISO(dateStr), 'EEEE, MMMM d, yyyy')
-      const id = await createDoc(user.uid, { title, type: 'diary', date: dateStr })
-      navigate(`/doc/${id}`)
+    try {
+      setDocError(null)
+      const existing = docs.find(d => d.type === 'diary' && d.date === dateStr)
+      if (existing) {
+        navigate(`/doc/${existing.id}`)
+      } else {
+        const title = format(parseISO(dateStr), 'EEEE, MMMM d, yyyy')
+        const id = await createDoc(user.uid, { title, type: 'diary', date: dateStr })
+        navigate(`/doc/${id}`)
+      }
+    } catch (err) {
+      setDocError(err.message || 'Failed to open diary')
     }
   }
 
@@ -142,6 +153,13 @@ export default function Home() {
           )}
         </div>
       </header>
+
+      {docError && (
+        <div className="px-5 py-2 bg-red-50 border-b border-red-100 text-red-600 text-xs flex items-center justify-between">
+          <span>{docError}</span>
+          <button onClick={() => setDocError(null)} className="ml-3 text-red-400 hover:text-red-600">✕</button>
+        </div>
+      )}
 
       <div className="flex flex-1 overflow-hidden">
         {/* Sidebar */}
