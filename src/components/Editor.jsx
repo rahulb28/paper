@@ -1,4 +1,4 @@
-import { useEditor, EditorContent, BubbleMenu } from '@tiptap/react'
+import { useEditor, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import TaskList from '@tiptap/extension-task-list'
 import TaskItem from '@tiptap/extension-task-item'
@@ -358,7 +358,9 @@ function SlashMenu({ query, pos, onSelect, onClose, onAI, editor }) {
 export default function Editor({ content, onChange, placeholder = 'Start writing, or type / for commands…', readOnly = false, docContext = '' }) {
   const [slash, setSlash] = useState({ open: false, pos: null, query: '', deleteFrom: 0, deleteTo: 0 })
   const [aiLoading, setAiLoading] = useState(false)
+  const [toolbar, setToolbar] = useState({ show: false, x: 0, y: 0 })
   const slashRef = useRef(slash)
+  const toolbarRef = useRef(null)
   slashRef.current = slash
 
   const editor = useEditor({
@@ -380,6 +382,26 @@ export default function Editor({ content, onChange, placeholder = 'Start writing
     onUpdate: ({ editor }) => {
       onChange && onChange(editor.getJSON())
       checkSlash(editor)
+    },
+    onSelectionUpdate: ({ editor }) => {
+      if (readOnly) return
+      const { from, to } = editor.state.selection
+      if (from === to || editor.isActive('mermaid')) {
+        setToolbar(t => ({ ...t, show: false }))
+        return
+      }
+      // Position above the selection midpoint
+      const sel = window.getSelection()
+      if (!sel || sel.rangeCount === 0) return
+      const rect = sel.getRangeAt(0).getBoundingClientRect()
+      setToolbar({ show: true, x: rect.left + rect.width / 2, y: rect.top })
+    },
+    onBlur: () => {
+      // Only hide if focus moved outside the toolbar
+      setTimeout(() => {
+        if (toolbarRef.current && toolbarRef.current.contains(document.activeElement)) return
+        setToolbar(t => ({ ...t, show: false }))
+      }, 100)
     },
     editorProps: { attributes: { spellcheck: 'true' } },
   })
@@ -443,6 +465,7 @@ export default function Editor({ content, onChange, placeholder = 'Start writing
     const { from, to } = editor.state.selection
     const selectedText = editor.state.doc.textBetween(from, to, '\n')
     if (!selectedText) return
+    setToolbar(t => ({ ...t, show: false }))
     setAiLoading(true)
     try {
       const res = await fetch('/api/ai', {
@@ -470,28 +493,40 @@ export default function Editor({ content, onChange, placeholder = 'Start writing
   }, [editor])
 
   useEffect(() => {
-    const handler = () => setSlash(s => ({ ...s, open: false }))
+    const handler = (e) => {
+      if (toolbarRef.current?.contains(e.target)) return
+      setSlash(s => ({ ...s, open: false }))
+    }
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
   }, [])
 
   if (!editor) return null
 
+  // Clamp toolbar so it doesn't overflow viewport edges
+  const toolbarWidth = 620
+  const margin = 8
+  const clampedX = Math.max(toolbarWidth / 2 + margin, Math.min(toolbar.x, window.innerWidth - toolbarWidth / 2 - margin))
+
   return (
     <div className="relative" onMouseDown={e => e.target.closest('.slash-menu') && e.stopPropagation()}>
       <EditorContent editor={editor} />
 
-      {!readOnly && (
-        <BubbleMenu
-          editor={editor}
-          tippyOptions={{ duration: 100, maxWidth: 'none', placement: 'top-start' }}
-          shouldShow={({ editor, state }) => {
-            const { from, to } = state.selection
-            return from !== to && !editor.isActive('mermaid')
+      {/* Floating formatting toolbar */}
+      {!readOnly && toolbar.show && (
+        <div
+          ref={toolbarRef}
+          style={{
+            position: 'fixed',
+            left: clampedX,
+            top: toolbar.y - 8,
+            transform: 'translate(-50%, -100%)',
+            zIndex: 9999,
           }}
+          onMouseDown={e => e.preventDefault()}
         >
           <FormattingBubble editor={editor} onAITransform={handleBubbleAI} aiLoading={aiLoading} />
-        </BubbleMenu>
+        </div>
       )}
 
       {slash.open && (
